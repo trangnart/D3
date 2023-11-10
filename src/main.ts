@@ -2,6 +2,8 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 import leaflet from "leaflet";
 import luck from "./luck";
+import { Board } from "./board";
+import { Cell } from "./board";
 import "./leafletWorkaround";
 
 const MERRILL_CLASSROOM = leaflet.latLng({
@@ -53,35 +55,51 @@ let points = 0;
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 statusPanel.innerHTML = "No points yet...";
 
-function makePit(i: number, j: number) {
-  const bounds = leaflet.latLngBounds([
-    [
-      MERRILL_CLASSROOM.lat + i * TILE_DEGREES,
-      MERRILL_CLASSROOM.lng + j * TILE_DEGREES,
-    ],
-    [
-      MERRILL_CLASSROOM.lat + (i + 1) * TILE_DEGREES,
-      MERRILL_CLASSROOM.lng + (j + 1) * TILE_DEGREES,
-    ],
-  ]);
+const board = new Board(TILE_DEGREES, NEIGHBORHOOD_SIZE);
+
+interface CellSerial extends Cell {
+  readonly serial: number;
+}
+
+class CoinCache {
+  private static coins: Map<string, number> = new Map();
+
+  static getCoin(cell: CellSerial): CellSerial {
+    const key = `${cell.i},${cell.j}`;
+    if (!this.coins.has(key)) {
+      this.coins.set(key, 0);
+    }
+
+    const serial = this.coins.get(key)!;
+    this.coins.set(key, serial + 1);
+
+    const newCell: CellSerial = { i: cell.i, j: cell.j, serial };
+
+    return newCell;
+  }
+}
+
+function makePit(cell: Cell) {
+  const cellSerial = CoinCache.getCoin(cell as CellSerial);
+  const bounds = board.getCellBounds(cellSerial);
 
   const pit = leaflet.rectangle(bounds) as leaflet.Layer;
 
   pit.bindPopup(() => {
-    let value = Math.floor(luck([i, j, "initialValue"].toString()) * 100);
-    let coins = Math.floor(luck([i, j, "coinValue"].toString()) * 10);
-    if (!deposits[`${i},${j}`]) {
-      deposits[`${i},${j}`] = 0;
+    let value = Math.floor(luck([cellSerial.i, cellSerial.j, "initialValue"].toString()) * 100);
+    let coins = Math.floor(luck([cellSerial.i, cellSerial.j, "coinValue"].toString()) * 10);
+    if (!deposits[`${cellSerial.i},${cellSerial.j}`]) {
+      deposits[`${cellSerial.i},${cellSerial.j}`] = 0;
     }
     const container = document.createElement("div");
     container.innerHTML = `
-        <div>There is a pit here at "${i},${j}". It has value <span id="value">${value}</span>. It has <span id="coins"> ${coins}</span> coins.</div>
+        <div>There is a pit here at "${cellSerial.i},${cellSerial.j}, ${cellSerial.serial}". It has value <span id="value">${value}</span>. It has <span id="coins"> ${coins}</span> coins.</div>
         <button id="poke">poke</button>
         <button id="collectCoins">Collect</button>
         <button id="depositCoins">Deposit</button>
         <div>Collecting: <span id="inventory">${collectedCoins}</span></div>
         <div>Depositing: <span id="deposit">${
-          deposits[`${i},${j}`]
+          deposits[`${cellSerial.i},${cellSerial.j}`]
         }</span></div>`;
 
     const poke = container.querySelector<HTMLButtonElement>("#poke")!;
@@ -110,11 +128,11 @@ function makePit(i: number, j: number) {
     });
     depositButton.addEventListener("click", () => {
       if (collectedCoins > 0) {
-        deposits[`${i},${j}`] += collectedCoins;
+        deposits[`${cellSerial.i},${cellSerial.j}`] += collectedCoins;
         collectedCoins = 0;
         inventoryDisplay.textContent = collectedCoins.toString();
         container.querySelector<HTMLSpanElement>("#deposit")!.innerHTML =
-          deposits[`${i},${j}`].toString();
+          deposits[`${cellSerial.i},${cellSerial.j}`].toString();
       }
     });
     return container;
@@ -122,10 +140,10 @@ function makePit(i: number, j: number) {
   pit.addTo(map);
 }
 
-for (let i = -NEIGHBORHOOD_SIZE; i < NEIGHBORHOOD_SIZE; i++) {
-  for (let j = -NEIGHBORHOOD_SIZE; j < NEIGHBORHOOD_SIZE; j++) {
-    if (luck([i, j].toString()) < PIT_SPAWN_PROBABILITY) {
-      makePit(i, j);
-    }
+const playerLocation = playerMarker.getLatLng();
+const cellsNearPlayer = board.getCellsNearPoint(playerLocation);
+cellsNearPlayer.forEach((cell) => {
+  if (luck([cell.i, cell.j].toString()) < PIT_SPAWN_PROBABILITY) {
+    makePit(cell);
   }
-}
+});
