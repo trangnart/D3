@@ -67,11 +67,10 @@ class CoinCache {
   static getCoin(cell: CellSerial): CellSerial {
     const key = `${cell.i},${cell.j}`;
     if (!this.coins.has(key)) {
-      this.coins.set(key, 0);
+      this.coins.set(key, Math.floor(Math.random() * 100));
     }
 
     const serial = this.coins.get(key)!;
-    this.coins.set(key, serial + 1);
 
     const newCell: CellSerial = { i: cell.i, j: cell.j, serial };
 
@@ -86,14 +85,20 @@ function makePit(cell: Cell) {
   const pit = leaflet.rectangle(bounds) as leaflet.Layer;
 
   pit.bindPopup(() => {
-    let value = Math.floor(luck([cellSerial.i, cellSerial.j, "initialValue"].toString()) * 100);
-    let coins = Math.floor(luck([cellSerial.i, cellSerial.j, "coinValue"].toString()) * 10);
+    let value = Math.floor(
+      luck([cellSerial.i, cellSerial.j, "initialValue"].toString()) * 100
+    );
+    let coins = Math.floor(
+      luck([cellSerial.i, cellSerial.j, "coinValue"].toString()) * 10
+    );
     if (!deposits[`${cellSerial.i},${cellSerial.j}`]) {
       deposits[`${cellSerial.i},${cellSerial.j}`] = 0;
     }
     const container = document.createElement("div");
     container.innerHTML = `
-        <div>There is a pit here at "${cellSerial.i},${cellSerial.j}, ${cellSerial.serial}". It has value <span id="value">${value}</span>. It has <span id="coins"> ${coins}</span> coins.</div>
+        <div>There is a pit here at "${cellSerial.i},${cellSerial.j}, ${
+      cellSerial.serial
+    }". It has value <span id="value">${value}</span>. It has <span id="coins"> ${coins}</span> coins.</div>
         <button id="poke">poke</button>
         <button id="collectCoins">Collect</button>
         <button id="depositCoins">Deposit</button>
@@ -147,3 +152,64 @@ cellsNearPlayer.forEach((cell) => {
     makePit(cell);
   }
 });
+
+const northButton = document.querySelector("#north")!;
+northButton.addEventListener("click", () => move("north"));
+
+const southButton = document.querySelector("#south")!;
+southButton.addEventListener("click", () => move("south"));
+
+const westButton = document.querySelector("#west")!;
+westButton.addEventListener("click", () => move("west"));
+
+const eastButton = document.querySelector("#east")!;
+eastButton.addEventListener("click", () => move("east"));
+
+function move(direction: string) {
+  const currentLocation = playerMarker.getLatLng();
+  let newLocation: leaflet.LatLng;
+
+  switch (direction) {
+    case "north":
+      newLocation = leaflet.latLng(
+        currentLocation.lat + TILE_DEGREES,
+        currentLocation.lng
+      );
+      break;
+    case "south":
+      newLocation = leaflet.latLng(
+        currentLocation.lat - TILE_DEGREES,
+        currentLocation.lng
+      );
+      break;
+    case "west":
+      newLocation = leaflet.latLng(
+        currentLocation.lat,
+        currentLocation.lng - TILE_DEGREES
+      );
+      break;
+    case "east":
+      newLocation = leaflet.latLng(
+        currentLocation.lat,
+        currentLocation.lng + TILE_DEGREES
+      );
+      break;
+    default:
+      return;
+  }
+  map.eachLayer((layer) => {
+    if (layer instanceof leaflet.Rectangle) {
+      map.removeLayer(layer);
+    }
+  });
+
+  const cellsNearPlayer = board.getCellsNearPoint(newLocation);
+  cellsNearPlayer.forEach((cell) => {
+    if (luck([cell.i, cell.j].toString()) < PIT_SPAWN_PROBABILITY) {
+      makePit(cell);
+    }
+  });
+
+  playerMarker.setLatLng(newLocation);
+  map.setView(newLocation);
+}
