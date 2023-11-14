@@ -61,25 +61,63 @@ interface CellSerial extends Cell {
   readonly serial: number;
 }
 
-class CoinCache {
-  private static coins: Map<string, number> = new Map();
+interface Momento<T> {
+  toMomento(): T;
+  fromMomento(momento: T): void;
+}
 
-  static getCoin(cell: CellSerial): CellSerial {
+class Geocache implements Momento<string> {
+  i: number;
+  j: number;
+  serial: number;
+  numCoins: number;
+
+  static caches: Map<string, number> = new Map();
+
+  constructor(cell: CellSerial) {
+    this.i = cell.i;
+    this.j = cell.j;
+    this.serial = cell.serial;
+    this.numCoins = Math.floor(
+      luck([cell.i, cell.j, "coinValue"].toString()) * 10
+    );
+  }
+
+  toMomento() {
+    return JSON.stringify({
+      i: this.i,
+      j: this.j,
+      serial: this.serial,
+      numCoins: this.numCoins,
+    });
+  }
+
+  fromMomento(momento: string) {
+    const data = JSON.parse(momento);
+    this.i = data.i;
+    this.j = data.j;
+    this.serial = data.serial;
+    this.numCoins = data.numCoins;
+  }
+
+  static getCache(cell: Cell): Geocache {
     const key = `${cell.i},${cell.j}`;
-    if (!this.coins.has(key)) {
-      this.coins.set(key, Math.floor(Math.random() * 100));
+    if (!this.caches.has(key)) {
+      this.caches.set(key, Math.floor(Math.random() * 100));
     }
 
-    const serial = this.coins.get(key)!;
+    const serial = this.caches.get(key)!;
 
     const newCell: CellSerial = { i: cell.i, j: cell.j, serial };
 
-    return newCell;
+    const newCache = new Geocache(newCell);
+
+    return newCache;
   }
 }
 
 function makePit(cell: Cell) {
-  const cellSerial = CoinCache.getCoin(cell as CellSerial);
+  const cellSerial = Geocache.getCache(cell as CellSerial);
   const bounds = board.getCellBounds(cellSerial);
 
   const pit = leaflet.rectangle(bounds) as leaflet.Layer;
@@ -88,9 +126,9 @@ function makePit(cell: Cell) {
     let value = Math.floor(
       luck([cellSerial.i, cellSerial.j, "initialValue"].toString()) * 100
     );
-    let coins = Math.floor(
+    /*let coins = Math.floor(
       luck([cellSerial.i, cellSerial.j, "coinValue"].toString()) * 10
-    );
+    );*/
     if (!deposits[`${cellSerial.i},${cellSerial.j}`]) {
       deposits[`${cellSerial.i},${cellSerial.j}`] = 0;
     }
@@ -98,7 +136,9 @@ function makePit(cell: Cell) {
     container.innerHTML = `
         <div>There is a pit here at "${cellSerial.i},${cellSerial.j}, ${
       cellSerial.serial
-    }". It has value <span id="value">${value}</span>. It has <span id="coins"> ${coins}</span> coins.</div>
+    }". It has value <span id="value">${value}</span>. It has <span id="coins"> ${
+      Geocache.getCache(cell).numCoins
+    } </span> coins.</div>
         <button id="poke">poke</button>
         <button id="collectCoins">Collect</button>
         <button id="depositCoins">Deposit</button>
@@ -125,10 +165,12 @@ function makePit(cell: Cell) {
       }
     });
     collectButton.addEventListener("click", () => {
-      collectedCoins += coins;
-      coins = 0;
+      const coin = Geocache.getCache(cell);
+      collectedCoins += coin.numCoins;
+      coin.numCoins = 0;
+
       container.querySelector<HTMLDivElement>("#coins")!.innerHTML =
-        coins.toString();
+        coin.numCoins.toString();
       inventoryDisplay.innerHTML = collectedCoins.toString();
     });
     depositButton.addEventListener("click", () => {
