@@ -2,8 +2,7 @@ import "leaflet/dist/leaflet.css";
 import "./style.css";
 import leaflet from "leaflet";
 import luck from "./luck";
-import { Board } from "./board";
-import { Cell } from "./board";
+import { Board, Cell } from "./board";
 import "./leafletWorkaround";
 
 const MERRILL_CLASSROOM = leaflet.latLng({
@@ -17,6 +16,7 @@ const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_DEGREES = 1e-4;
 const NEIGHBORHOOD_SIZE = 8;
 const PIT_SPAWN_PROBABILITY = 0.1;
+const movementHistory: leaflet.LatLng[] = [];
 
 const mapContainer = document.querySelector<HTMLElement>("#map")!;
 
@@ -187,12 +187,33 @@ function makePit(cell: Cell) {
   pit.addTo(map);
 }
 
+const movementPolyline = leaflet
+  .polyline([], {
+    color: "green",
+  })
+  .addTo(map);
 const playerLocation = playerMarker.getLatLng();
 const cellsNearPlayer = board.getCellsNearPoint(playerLocation);
 cellsNearPlayer.forEach((cell) => {
   if (luck([cell.i, cell.j].toString()) < PIT_SPAWN_PROBABILITY) {
     makePit(cell);
   }
+});
+
+sensorButton.addEventListener("click", () => {
+  navigator.geolocation.watchPosition((position) => {
+    const newPosition = leaflet.latLng(
+      position.coords.latitude,
+      position.coords.longitude
+    );
+
+    movementHistory.push(newPosition);
+
+    playerMarker.setLatLng(newPosition);
+    map.setView(newPosition);
+
+    movementPolyline.setLatLngs(movementHistory);
+  });
 });
 
 const northButton = document.querySelector("#north")!;
@@ -239,6 +260,11 @@ function move(direction: string) {
     default:
       return;
   }
+
+  movementHistory.push(newLocation);
+
+  movementPolyline.setLatLngs(movementHistory);
+
   map.eachLayer((layer) => {
     if (layer instanceof leaflet.Rectangle) {
       map.removeLayer(layer);
@@ -254,4 +280,38 @@ function move(direction: string) {
 
   playerMarker.setLatLng(newLocation);
   map.setView(newLocation);
+}
+
+const resetButton = document.querySelector("#reset")!;
+resetButton.addEventListener("click", resetGame);
+
+function resetGame() {
+  collectedCoins = 0;
+
+  for (const key in deposits) {
+    deposits[key] = 0;
+  }
+
+  movementHistory.length = 0;
+
+  map.eachLayer((layer) => {
+    if (layer instanceof leaflet.Rectangle) {
+      map.removeLayer(layer);
+    }
+  });
+
+  playerMarker.setLatLng(MERRILL_CLASSROOM);
+  map.setView(MERRILL_CLASSROOM);
+
+  movementPolyline.setLatLngs([]);
+
+  points = 0;
+  statusPanel.innerHTML = "No points yet...";
+
+  const cellsNearPlayer = board.getCellsNearPoint(MERRILL_CLASSROOM);
+  cellsNearPlayer.forEach((cell) => {
+    if (luck([cell.i, cell.j].toString()) < PIT_SPAWN_PROBABILITY) {
+      makePit(cell);
+    }
+  });
 }
